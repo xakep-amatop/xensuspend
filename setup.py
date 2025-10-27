@@ -1,7 +1,7 @@
 from distutils.core import setup
 
 setup(name='xensuspend',
-      version='0.0.1',
+      version='0.0.2',
       packages=['xensuspend'],
       description='Xen system suspend coordinator',
       url='https://github.com/xen-troops/xensuspend',

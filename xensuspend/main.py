@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2019 EPAM Systems
+# Copyright (C) 2019, 2025 EPAM Systems
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -22,6 +22,9 @@ import daemon.pidfile
 import pyxs
 import sys
 import time
+import subprocess
+import shutil
+import os
 
 from .xenstat import xenstat
 from .libxl import libxl
@@ -107,12 +110,14 @@ def main():
 
 def suspend():
     deps = build_deps()
+    suspended = []
     for d in get_suspend_order(deps):
-        suspend_domain(d)
+        if suspend_domain(d):
+            suspended.append(d)
+    return suspended
 
-def resume():
-    deps = build_deps()
-    for d in reversed(get_suspend_order(deps)):
+def resume(suspended_domains):
+    for d in reversed(suspended_domains):
         resume_domain(d)
         time.sleep(3)
 
@@ -162,21 +167,43 @@ def on_domains_changed(old_domains, client, monitor):
     return domains
 
 def system_suspend():
-    suspend()
-    resume()
+    suspended_domains = suspend()
+    resume(suspended_domains)
+
+def sh(args):
+    # Без shell=True, щоб було безпечніше.
+    return subprocess.run(args, check=True, text=True, capture_output=True)
 
 def suspend_domain(domid, timeout=60):
     if domid == 0:
-        return suspend_dom0()
+        suspend_dom0()
+        return True
 
-    print("Suspending domain {}".format(domid))
+    with xenstat() as xs:
+        dom = xs.domain(domid)
+        if dom is None:
+            print("Domain {} is not reported by xenstat before suspend trigger; skipping".format(domid))
+            return False
+        dom_name = dom.name()
+        if dom.shutdown():
+            print("Domain {} already in shutdown/suspended state; skipping suspend trigger".format(dom_name))
+            return False
+
+    print("Suspending domain {} ({})".format(dom_name, domid))
     with libxl() as xl:
-        xl.suspend_trigger(domid)
+        ret = xl.suspend_trigger(domid)
+        if ret != 0:
+            print("libxl suspend trigger failed for {} ({}), error {}".format(dom_name, domid, ret))
+            return False
 
     while timeout > 0:
         with xenstat() as xs:
             dom = xs.domain(domid)
-            print("Waiting {} to suspend, {} seconds left".format(dom.name(), timeout))
+            if dom is None:
+                print("Domain {} is no longer reported by xenstat; assuming suspend is complete".format(domid))
+                break
+            dom_name = dom.name()
+            print("Waiting {} to suspend, {} seconds left".format(dom_name, timeout))
             if dom.shutdown():
                 break
             time.sleep(1)
@@ -184,19 +211,35 @@ def suspend_domain(domid, timeout=60):
 
     if timeout == 0:
         raise Exception("Failed to suspend domain {}".format(domid))
+    return True
 
 def resume_domain(domid, timeout=60):
     if domid == 0:
         return
-    print("Resuming domain {}".format(domid))
+
+    print("Resuming domain {} ({})".format(dom_name, domid))
     with libxl() as xl:
-        xl.suspend_wakeup(domid)
+        ret = xl.suspend_wakeup(domid)
+        if ret != 0:
+            raise Exception("Failed to resume domain {} ({}), libxl error {}".format(dom_name, domid, ret))
 
 def suspend_dom0():
-    print("echo mem > /sys/power/state")
-    with open("/sys/power/state", "wt") as f:
-        f.write("mem")
-    pass
+    if shutil.which("systemctl"):
+        try:
+            print("Running systemctl suspend")
+            sh(["systemctl", "suspend"])
+            return
+        except subprocess.CalledProcessError as err:
+            print("systemctl suspend failed ({}); falling back to /sys/power/state".format(err.returncode))
+    power_state_path = "/sys/power/state"
+    if not os.path.exists(power_state_path):
+        raise Exception("{} is missing; kernel suspend/hibernate support is unavailable".format(power_state_path))
+    print("echo mem > {}".format(power_state_path))
+    try:
+        with open(power_state_path, "wt") as f:
+            f.write("mem")
+    except OSError as err:
+        raise Exception("Failed to write to {}: {}".format(power_state_path, err))
 
 def test_suspend_order():
     deps = {
@@ -212,4 +255,3 @@ def test_suspend_order():
 
 if __name__ == "__main__":
     main()
-
