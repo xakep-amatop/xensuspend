@@ -1,4 +1,4 @@
-# Copyright (C) 2019 EPAM Systems
+# Copyright (C) 2019, 2025 EPAM Systems
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -33,25 +33,12 @@ class libxl(object):
 
         return False
 
-    def pause(self, domid):
-        return libxenlight.libxl_domain_pause(self.ctx, domid)
-
-    def unpause(self, domid):
-        return libxenlight.libxl_domain_unpause(self.ctx, domid)
-
     def shutdown(self, domid):
         return libxenlight.libxl_domain_shutdown(self.ctx, domid)
-
-    def reboot(self, domid):
-        return libxenlight.libxl_domain_reboot(self.ctx, domid)
-
-    def destroy(self, domid):
-        return libxenlight.libxl_domain_destroy(self.ctx, domid)
 
     def suspend_trigger(self, domid):
         return libxenlight.libxl_domain_suspend_trigger(self.ctx, domid)
 
     def suspend_wakeup(self, domid):
         return libxenlight.libxl_domain_wakeup(self.ctx, domid)
-
 
