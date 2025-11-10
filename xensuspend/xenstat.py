@@ -1,4 +1,4 @@
-# Copyright (C) 2019 EPAM Systems
+# Copyright (C) 2019, 2025 EPAM Systems
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -47,24 +47,8 @@ class xenstat(object):
         def name(self):
             return xenstatlib.xenstat_domain_name(self.domain).decode()
 
-        def dying(self):
-            return bool(xenstatlib.xenstat_domain_dying(self.domain))
-
-        def crashed(self):
-            return bool(xenstatlib.xenstat_domain_crashed(self.domain))
-
         def shutdown(self):
             return bool(xenstatlib.xenstat_domain_shutdown(self.domain))
 
-        def paused(self):
-            return bool(xenstatlib.xenstat_domain_paused(self.domain))
-
-        def blocked(self):
-            return bool(xenstatlib.xenstat_domain_blocked(self.domain))
-
-        def running(self):
-            return bool(xenstatlib.xenstat_domain_running(self.domain))
-
     def domain(self, domid):
         return self.xenstat_domain(self.node, domid)
-
