@@ -22,6 +22,9 @@ import daemon.pidfile
 import pyxs
 import sys
 import time
+import subprocess
+import shutil
+import os
 
 from .xenstat import xenstat
 from .libxl import libxl
@@ -167,6 +170,10 @@ def system_suspend():
     suspended_domains = suspend()
     resume(suspended_domains)
 
+def sh(args):
+    # Без shell=True, щоб було безпечніше.
+    return subprocess.run(args, check=True, text=True, capture_output=True)
+
 def suspend_domain(domid, timeout=60):
     if domid == 0:
         suspend_dom0()
@@ -217,10 +224,22 @@ def resume_domain(domid, timeout=60):
             raise Exception("Failed to resume domain {} ({}), libxl error {}".format(dom_name, domid, ret))
 
 def suspend_dom0():
-    print("echo mem > /sys/power/state")
-    with open("/sys/power/state", "wt") as f:
-        f.write("mem")
-    pass
+    if shutil.which("systemctl"):
+        try:
+            print("Running systemctl suspend")
+            sh(["systemctl", "suspend"])
+            return
+        except subprocess.CalledProcessError as err:
+            print("systemctl suspend failed ({}); falling back to /sys/power/state".format(err.returncode))
+    power_state_path = "/sys/power/state"
+    if not os.path.exists(power_state_path):
+        raise Exception("{} is missing; kernel suspend/hibernate support is unavailable".format(power_state_path))
+    print("echo mem > {}".format(power_state_path))
+    try:
+        with open(power_state_path, "wt") as f:
+            f.write("mem")
+    except OSError as err:
+        raise Exception("Failed to write to {}: {}".format(power_state_path, err))
 
 def test_suspend_order():
     deps = {
