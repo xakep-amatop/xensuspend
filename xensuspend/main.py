@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Copyright (C) 2019 EPAM Systems
+# Copyright (C) 2019, 2025 EPAM Systems
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -107,12 +107,14 @@ def main():
 
 def suspend():
     deps = build_deps()
+    suspended = []
     for d in get_suspend_order(deps):
-        suspend_domain(d)
+        if suspend_domain(d):
+            suspended.append(d)
+    return suspended
 
-def resume():
-    deps = build_deps()
-    for d in reversed(get_suspend_order(deps)):
+def resume(suspended_domains):
+    for d in reversed(suspended_domains):
         resume_domain(d)
         time.sleep(3)
 
@@ -162,12 +164,13 @@ def on_domains_changed(old_domains, client, monitor):
     return domains
 
 def system_suspend():
-    suspend()
-    resume()
+    suspended_domains = suspend()
+    resume(suspended_domains)
 
 def suspend_domain(domid, timeout=60):
     if domid == 0:
-        return suspend_dom0()
+        suspend_dom0()
+        return True
 
     print("Suspending domain {}".format(domid))
     with libxl() as xl:
@@ -212,4 +215,3 @@ def test_suspend_order():
 
 if __name__ == "__main__":
     main()
-
