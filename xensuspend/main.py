@@ -172,14 +172,31 @@ def suspend_domain(domid, timeout=60):
         suspend_dom0()
         return True
 
-    print("Suspending domain {}".format(domid))
+    with xenstat() as xs:
+        dom = xs.domain(domid)
+        if dom is None:
+            print("Domain {} is not reported by xenstat before suspend trigger; skipping".format(domid))
+            return False
+        dom_name = dom.name()
+        if dom.shutdown():
+            print("Domain {} already in shutdown/suspended state; skipping suspend trigger".format(dom_name))
+            return False
+
+    print("Suspending domain {} ({})".format(dom_name, domid))
     with libxl() as xl:
-        xl.suspend_trigger(domid)
+        ret = xl.suspend_trigger(domid)
+        if ret != 0:
+            print("libxl suspend trigger failed for {} ({}), error {}".format(dom_name, domid, ret))
+            return False
 
     while timeout > 0:
         with xenstat() as xs:
             dom = xs.domain(domid)
-            print("Waiting {} to suspend, {} seconds left".format(dom.name(), timeout))
+            if dom is None:
+                print("Domain {} is no longer reported by xenstat; assuming suspend is complete".format(domid))
+                break
+            dom_name = dom.name()
+            print("Waiting {} to suspend, {} seconds left".format(dom_name, timeout))
             if dom.shutdown():
                 break
             time.sleep(1)
@@ -187,13 +204,17 @@ def suspend_domain(domid, timeout=60):
 
     if timeout == 0:
         raise Exception("Failed to suspend domain {}".format(domid))
+    return True
 
 def resume_domain(domid, timeout=60):
     if domid == 0:
         return
-    print("Resuming domain {}".format(domid))
+
+    print("Resuming domain {} ({})".format(dom_name, domid))
     with libxl() as xl:
-        xl.suspend_wakeup(domid)
+        ret = xl.suspend_wakeup(domid)
+        if ret != 0:
+            raise Exception("Failed to resume domain {} ({}), libxl error {}".format(dom_name, domid, ret))
 
 def suspend_dom0():
     print("echo mem > /sys/power/state")
